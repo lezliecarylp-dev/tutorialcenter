@@ -10,6 +10,10 @@
   <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       font-family: Arial, sans-serif;
       background: #f4f6f9;
@@ -31,14 +35,29 @@
       color: #183b56;
     }
 
+    p {
+      color: #667085;
+    }
+
     #reader {
       width: 100%;
       margin: 20px auto;
     }
 
+    /* Fix mirrored camera preview */
+    #reader video {
+      transform: scaleX(1) !important;
+    }
+
     #status {
-      color: #667085;
+      color: #183b56;
       font-weight: bold;
+      margin-top: 15px;
+    }
+
+    .instruction {
+      font-size: 14px;
+      color: #667085;
     }
   </style>
 </head>
@@ -46,12 +65,18 @@
 <body>
 
   <div class="container">
+
     <h2>Tutorial Center</h2>
     <p>Employee QR Code Scanner</p>
 
     <div id="reader"></div>
 
+    <p class="instruction">
+      Position the employee QR code inside the scanning box.
+    </p>
+
     <p id="status">Starting camera...</p>
+
   </div>
 
   <script>
@@ -68,50 +93,55 @@
     };
 
     async function startScanner() {
+
       try {
+
+        const cameras = await Html5Qrcode.getCameras();
+
+        if (!cameras || cameras.length === 0) {
+          throw new Error("No camera detected.");
+        }
+
+        // Prefer the environment-facing camera if available.
+        const selectedCamera =
+          cameras.find(camera =>
+            /back|rear|environment/i.test(camera.label)
+          ) || cameras[0];
+
         await html5QrCode.start(
-          { facingMode: "environment" },
+          selectedCamera.id,
           config,
           onScanSuccess
         );
 
         document.getElementById("status").textContent =
-          "Camera ready. Point it at an employee QR code.";
+          "Camera ready. Scan an employee QR code.";
 
       } catch (error) {
-        try {
-          const cameras = await Html5Qrcode.getCameras();
 
-          if (!cameras || cameras.length === 0) {
-            throw new Error("No camera was detected.");
-          }
+        document.getElementById("status").textContent =
+          "Unable to access camera. Please allow camera permission and reload.";
 
-          await html5QrCode.start(
-            cameras[0].id,
-            config,
-            onScanSuccess
-          );
+        console.error(error);
 
-          document.getElementById("status").textContent =
-            "Camera ready. Point it at an employee QR code.";
-
-        } catch (fallbackError) {
-          document.getElementById("status").textContent =
-            "Unable to access camera. Allow camera permission and reload this page.";
-        }
       }
     }
 
     async function onScanSuccess(decodedText) {
+
       if (isProcessing) return;
 
       let employee;
 
       try {
+
         employee = JSON.parse(decodedText);
+
       } catch (error) {
+
         document.getElementById("status").textContent =
           "Invalid QR code. Please scan an employee QR code.";
+
         return;
       }
 
@@ -120,8 +150,10 @@
         !employee["ID Number"] ||
         !employee["Name"]
       ) {
+
         document.getElementById("status").textContent =
-          "QR code is missing employee ID or Name.";
+          "Invalid employee QR code. Missing ID Number or Name.";
+
         return;
       }
 
@@ -131,37 +163,54 @@
         "Employee QR code detected!";
 
       try {
+
         await html5QrCode.stop();
 
         if (window.opener && !window.opener.closed) {
+
           window.opener.postMessage({
+
             type: "EMPLOYEE_QR_SCANNED",
+
             employee: {
               "ID Number": String(employee["ID Number"]).trim(),
               "Name": String(employee["Name"]).trim()
             },
+
             scannedAt: new Date().toISOString()
+
           }, "*");
 
           document.getElementById("status").textContent =
-            "Employee information sent. You may close this window.";
+            "Employee information sent successfully!";
 
           setTimeout(function() {
             window.close();
           }, 1000);
 
         } else {
+
           document.getElementById("status").textContent =
-            "Attendance page not found. Please open the scanner from the attendance page.";
+            "Attendance page not found. Please open the scanner from the attendance system.";
+
+          isProcessing = false;
+
         }
 
       } catch (error) {
+
         document.getElementById("status").textContent =
           "Unable to process QR code. Please reload the page.";
+
+        console.error(error);
+
+        isProcessing = false;
+
       }
     }
 
     window.addEventListener("load", startScanner);
+
   </script>
 
 </body>
