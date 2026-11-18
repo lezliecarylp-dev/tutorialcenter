@@ -4,209 +4,165 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>QR Camera Scanner</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
+  <title>Tutorial Center QR Scanner</title>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
 
   <style>
     body {
       font-family: Arial, sans-serif;
       background: #f4f6f9;
-      padding: 20px;
       margin: 0;
-      color: #202124;
+      padding: 20px;
+      text-align: center;
     }
 
     .container {
-      max-width: 480px;
-      margin: 25px auto;
+      max-width: 500px;
+      margin: 20px auto;
       background: white;
-      padding: 24px;
-      border-radius: 14px;
-      box-shadow: 0 4px 15px rgba(0,0,0,.08);
+      padding: 25px;
+      border-radius: 15px;
+      box-shadow: 0 3px 15px rgba(0,0,0,0.08);
     }
 
-    h2, p { text-align: center; }
-
-    p { color: #666; font-size: 14px; }
+    h2 {
+      color: #183b56;
+    }
 
     #reader {
       width: 100%;
-      overflow: hidden;
-      border-radius: 10px;
+      margin: 20px auto;
     }
 
-    .status {
-      padding: 12px;
-      background: #eef2ff;
-      color: #3949ab;
-      border-radius: 8px;
-      text-align: center;
-      margin-top: 15px;
-      font-size: 14px;
-    }
-
-    .error {
-      background: #ffebee;
-      color: #c62828;
-    }
-
-    button {
-      width: 100%;
-      padding: 14px;
-      margin-top: 15px;
-      border: 0;
-      border-radius: 8px;
-      background: #1a73e8;
-      color: white;
+    #status {
+      color: #667085;
       font-weight: bold;
-      font-size: 15px;
-      cursor: pointer;
-    }
-
-    button:disabled {
-      background: #999;
     }
   </style>
 </head>
 
 <body>
 
-<div class="container">
-  <h2>QR Camera Scanner</h2>
-  <p>Point your camera at the employee QR code.</p>
+  <div class="container">
+    <h2>Tutorial Center</h2>
+    <p>Employee QR Code Scanner</p>
 
-  <div id="reader"></div>
+    <div id="reader"></div>
 
-  <div id="status" class="status">
-    Initializing camera...
+    <p id="status">Starting camera...</p>
   </div>
 
-  <button id="retryBtn" onclick="startScanner()" style="display:none">
-    RETRY CAMERA
-  </button>
-</div>
+  <script>
+    const html5QrCode = new Html5Qrcode("reader");
 
-<script>
-  let scanner = null;
-  let running = false;
-  let processing = false;
+    let isProcessing = false;
 
-  const statusBox = document.getElementById("status");
-  const retryBtn = document.getElementById("retryBtn");
-
-  function status(message, error = false) {
-    statusBox.textContent = message;
-    statusBox.className = error ? "status error" : "status";
-  }
-
-  async function startScanner() {
-    if (running || processing) return;
-
-    retryBtn.style.display = "none";
-    status("Opening camera...");
-
-    try {
-      if (!navigator.mediaDevices ||
-          !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Camera access is not supported by this browser.");
+    const config = {
+      fps: 10,
+      qrbox: {
+        width: 250,
+        height: 250
       }
+    };
 
-      if (!scanner) {
-        scanner = new Html5Qrcode("reader");
+    async function startScanner() {
+      try {
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          config,
+          onScanSuccess
+        );
+
+        document.getElementById("status").textContent =
+          "Camera ready. Point it at an employee QR code.";
+
+      } catch (error) {
+        try {
+          const cameras = await Html5Qrcode.getCameras();
+
+          if (!cameras || cameras.length === 0) {
+            throw new Error("No camera was detected.");
+          }
+
+          await html5QrCode.start(
+            cameras[0].id,
+            config,
+            onScanSuccess
+          );
+
+          document.getElementById("status").textContent =
+            "Camera ready. Point it at an employee QR code.";
+
+        } catch (fallbackError) {
+          document.getElementById("status").textContent =
+            "Unable to access camera. Allow camera permission and reload this page.";
+        }
       }
-
-      await scanner.start(
-        { facingMode: "environment" },
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 250 }
-        },
-        onScanSuccess,
-        () => {}
-      );
-
-      running = true;
-      status("Camera ready. Scan an employee QR code.");
-
-    } catch (error) {
-      running = false;
-      status(error.message || "Unable to open camera.", true);
-      retryBtn.style.display = "block";
-    }
-  }
-
-  async function stopScanner() {
-    if (!scanner || !running) return;
-
-    try {
-      await scanner.stop();
-    } catch (error) {
-      console.log(error);
     }
 
-    running = false;
-  }
+    async function onScanSuccess(decodedText) {
+      if (isProcessing) return;
 
-  async function onScanSuccess(decodedText) {
-    if (processing) return;
+      let employee;
 
-    processing = true;
-    await stopScanner();
-
-    try {
-      const employee = JSON.parse(decodedText);
+      try {
+        employee = JSON.parse(decodedText);
+      } catch (error) {
+        document.getElementById("status").textContent =
+          "Invalid QR code. Please scan an employee QR code.";
+        return;
+      }
 
       if (
         !employee ||
-        typeof employee !== "object" ||
-        Array.isArray(employee) ||
-        typeof employee["ID Number"] !== "string" ||
-        typeof employee["Name"] !== "string" ||
-        !employee["ID Number"].trim() ||
-        !employee["Name"].trim()
+        !employee["ID Number"] ||
+        !employee["Name"]
       ) {
-        throw new Error("Missing or invalid employee information.");
+        document.getElementById("status").textContent =
+          "QR code is missing employee ID or Name.";
+        return;
       }
 
-      if (!window.opener || window.opener.closed) {
-        throw new Error("Attendance window is no longer available.");
+      isProcessing = true;
+
+      document.getElementById("status").textContent =
+        "Employee QR code detected!";
+
+      try {
+        await html5QrCode.stop();
+
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage({
+            type: "EMPLOYEE_QR_SCANNED",
+            employee: {
+              "ID Number": String(employee["ID Number"]).trim(),
+              "Name": String(employee["Name"]).trim()
+            },
+            scannedAt: new Date().toISOString()
+          }, "*");
+
+          document.getElementById("status").textContent =
+            "Employee information sent. You may close this window.";
+
+          setTimeout(function() {
+            window.close();
+          }, 1000);
+
+        } else {
+          document.getElementById("status").textContent =
+            "Attendance page not found. Please open the scanner from the attendance page.";
+        }
+
+      } catch (error) {
+        document.getElementById("status").textContent =
+          "Unable to process QR code. Please reload the page.";
       }
-
-      const payload = {
-        type: "EMPLOYEE_QR_SCANNED",
-        employee: {
-          "ID Number": employee["ID Number"].trim(),
-          "Name": employee["Name"].trim()
-        },
-        scannedAt: new Date().toISOString()
-      };
-
-      // Send scanned data to the Apps Script window.
-      // The parent validates this message's origin.
-      window.opener.postMessage(payload, "*");
-
-      status("QR code scanned! Returning to attendance page.");
-
-      setTimeout(() => window.close(), 700);
-
-    } catch (error) {
-      processing = false;
-      status(
-        "Invalid QR code: " + error.message +
-        " Please try another QR code.",
-        true
-      );
-
-      setTimeout(() => {
-        status("Ready. Scan an employee QR code.");
-        startScanner();
-      }, 1800);
     }
-  }
 
-  window.addEventListener("load", startScanner);
-</script>
+    window.addEventListener("load", startScanner);
+  </script>
 
 </body>
 </html>
