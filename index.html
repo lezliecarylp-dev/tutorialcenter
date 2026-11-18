@@ -4,7 +4,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-
   <title>Tutorial Center QR Scanner</title>
 
   <script src="https://unpkg.com/html5-qrcode"></script>
@@ -35,24 +34,23 @@
       color: #183b56;
     }
 
-    p {
-      color: #667085;
-    }
-
     #reader {
       width: 100%;
       margin: 20px auto;
     }
 
-    /* Fix mirrored camera preview */
+    /* Correct mirrored camera preview */
     #reader video {
-      transform: scaleX(1) !important;
+      transform: scaleX(-1) !important;
+    }
+
+    #reader canvas {
+      transform: none !important;
     }
 
     #status {
       color: #183b56;
       font-weight: bold;
-      margin-top: 15px;
     }
 
     .instruction {
@@ -65,7 +63,6 @@
 <body>
 
   <div class="container">
-
     <h2>Tutorial Center</h2>
     <p>Employee QR Code Scanner</p>
 
@@ -76,7 +73,6 @@
     </p>
 
     <p id="status">Starting camera...</p>
-
   </div>
 
   <script>
@@ -93,16 +89,13 @@
     };
 
     async function startScanner() {
-
       try {
-
         const cameras = await Html5Qrcode.getCameras();
 
         if (!cameras || cameras.length === 0) {
           throw new Error("No camera detected.");
         }
 
-        // Prefer the environment-facing camera if available.
         const selectedCamera =
           cameras.find(camera =>
             /back|rear|environment/i.test(camera.label)
@@ -118,30 +111,23 @@
           "Camera ready. Scan an employee QR code.";
 
       } catch (error) {
-
         document.getElementById("status").textContent =
           "Unable to access camera. Please allow camera permission and reload.";
 
         console.error(error);
-
       }
     }
 
     async function onScanSuccess(decodedText) {
-
       if (isProcessing) return;
 
       let employee;
 
       try {
-
         employee = JSON.parse(decodedText);
-
       } catch (error) {
-
         document.getElementById("status").textContent =
           "Invalid QR code. Please scan an employee QR code.";
-
         return;
       }
 
@@ -150,10 +136,8 @@
         !employee["ID Number"] ||
         !employee["Name"]
       ) {
-
         document.getElementById("status").textContent =
-          "Invalid employee QR code. Missing ID Number or Name.";
-
+          "Invalid employee QR code.";
         return;
       }
 
@@ -163,54 +147,40 @@
         "Employee QR code detected!";
 
       try {
-
         await html5QrCode.stop();
 
         if (window.opener && !window.opener.closed) {
-
           window.opener.postMessage({
-
             type: "EMPLOYEE_QR_SCANNED",
-
             employee: {
               "ID Number": String(employee["ID Number"]).trim(),
               "Name": String(employee["Name"]).trim()
             },
-
             scannedAt: new Date().toISOString()
-
           }, "*");
 
           document.getElementById("status").textContent =
             "Employee information sent successfully!";
 
-          setTimeout(function() {
-            window.close();
-          }, 1000);
+          setTimeout(() => window.close(), 1000);
 
         } else {
-
           document.getElementById("status").textContent =
-            "Attendance page not found. Please open the scanner from the attendance system.";
+            "Please open the scanner from the attendance system.";
 
           isProcessing = false;
-
         }
 
       } catch (error) {
-
         document.getElementById("status").textContent =
-          "Unable to process QR code. Please reload the page.";
+          "Unable to process QR code. Please reload.";
 
         console.error(error);
-
         isProcessing = false;
-
       }
     }
 
     window.addEventListener("load", startScanner);
-
   </script>
 
 </body>
