@@ -1,0 +1,212 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QR Camera Scanner</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f6f9;
+      padding: 20px;
+      margin: 0;
+      color: #202124;
+    }
+
+    .container {
+      max-width: 480px;
+      margin: 25px auto;
+      background: white;
+      padding: 24px;
+      border-radius: 14px;
+      box-shadow: 0 4px 15px rgba(0,0,0,.08);
+    }
+
+    h2, p { text-align: center; }
+
+    p { color: #666; font-size: 14px; }
+
+    #reader {
+      width: 100%;
+      overflow: hidden;
+      border-radius: 10px;
+    }
+
+    .status {
+      padding: 12px;
+      background: #eef2ff;
+      color: #3949ab;
+      border-radius: 8px;
+      text-align: center;
+      margin-top: 15px;
+      font-size: 14px;
+    }
+
+    .error {
+      background: #ffebee;
+      color: #c62828;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 15px;
+      border: 0;
+      border-radius: 8px;
+      background: #1a73e8;
+      color: white;
+      font-weight: bold;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #999;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+  <h2>QR Camera Scanner</h2>
+  <p>Point your camera at the employee QR code.</p>
+
+  <div id="reader"></div>
+
+  <div id="status" class="status">
+    Initializing camera...
+  </div>
+
+  <button id="retryBtn" onclick="startScanner()" style="display:none">
+    RETRY CAMERA
+  </button>
+</div>
+
+<script>
+  let scanner = null;
+  let running = false;
+  let processing = false;
+
+  const statusBox = document.getElementById("status");
+  const retryBtn = document.getElementById("retryBtn");
+
+  function status(message, error = false) {
+    statusBox.textContent = message;
+    statusBox.className = error ? "status error" : "status";
+  }
+
+  async function startScanner() {
+    if (running || processing) return;
+
+    retryBtn.style.display = "none";
+    status("Opening camera...");
+
+    try {
+      if (!navigator.mediaDevices ||
+          !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Camera access is not supported by this browser.");
+      }
+
+      if (!scanner) {
+        scanner = new Html5Qrcode("reader");
+      }
+
+      await scanner.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 }
+        },
+        onScanSuccess,
+        () => {}
+      );
+
+      running = true;
+      status("Camera ready. Scan an employee QR code.");
+
+    } catch (error) {
+      running = false;
+      status(error.message || "Unable to open camera.", true);
+      retryBtn.style.display = "block";
+    }
+  }
+
+  async function stopScanner() {
+    if (!scanner || !running) return;
+
+    try {
+      await scanner.stop();
+    } catch (error) {
+      console.log(error);
+    }
+
+    running = false;
+  }
+
+  async function onScanSuccess(decodedText) {
+    if (processing) return;
+
+    processing = true;
+    await stopScanner();
+
+    try {
+      const employee = JSON.parse(decodedText);
+
+      if (
+        !employee ||
+        typeof employee !== "object" ||
+        Array.isArray(employee) ||
+        typeof employee["ID Number"] !== "string" ||
+        typeof employee["Name"] !== "string" ||
+        !employee["ID Number"].trim() ||
+        !employee["Name"].trim()
+      ) {
+        throw new Error("Missing or invalid employee information.");
+      }
+
+      if (!window.opener || window.opener.closed) {
+        throw new Error("Attendance window is no longer available.");
+      }
+
+      const payload = {
+        type: "EMPLOYEE_QR_SCANNED",
+        employee: {
+          "ID Number": employee["ID Number"].trim(),
+          "Name": employee["Name"].trim()
+        },
+        scannedAt: new Date().toISOString()
+      };
+
+      // Send scanned data to the Apps Script window.
+      // The parent validates this message's origin.
+      window.opener.postMessage(payload, "*");
+
+      status("QR code scanned! Returning to attendance page.");
+
+      setTimeout(() => window.close(), 700);
+
+    } catch (error) {
+      processing = false;
+      status(
+        "Invalid QR code: " + error.message +
+        " Please try another QR code.",
+        true
+      );
+
+      setTimeout(() => {
+        status("Ready. Scan an employee QR code.");
+        startScanner();
+      }, 1800);
+    }
+  }
+
+  window.addEventListener("load", startScanner);
+</script>
+
+</body>
+</html>
