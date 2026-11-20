@@ -39,9 +39,9 @@
       margin: 20px auto;
     }
 
-    /* Correct mirrored camera preview */
     #reader video {
       transform: scaleX(-1) !important;
+      -webkit-transform: scaleX(-1) !important;
     }
 
     #reader canvas {
@@ -64,18 +64,22 @@
 
   <div class="container">
     <h2>Tutorial Center</h2>
-    <p>Employee QR Code Scanner</p>
+
+    <p id="scannerTitle">QR Code Scanner</p>
 
     <div id="reader"></div>
 
-    <p class="instruction">
-      Position the employee QR code inside the scanning box.
+    <p class="instruction" id="instruction">
+      Position the QR code inside the scanning box.
     </p>
 
     <p id="status">Starting camera...</p>
   </div>
 
   <script>
+    const params = new URLSearchParams(window.location.search);
+    const scanMode = params.get("mode");
+
     const html5QrCode = new Html5Qrcode("reader");
 
     let isProcessing = false;
@@ -88,7 +92,29 @@
       }
     };
 
+    function initializePage() {
+      if (scanMode !== "employee" && scanMode !== "student") {
+        document.getElementById("status").textContent =
+          "Please open the scanner from the attendance system.";
+        return false;
+      }
+
+      const title = scanMode === "employee"
+        ? "Employee QR Code Scanner"
+        : "Student QR Code Scanner";
+
+      document.getElementById("scannerTitle").textContent = title;
+
+      document.getElementById("instruction").textContent =
+        "Position the " + scanMode +
+        " QR code inside the scanning box.";
+
+      return true;
+    }
+
     async function startScanner() {
+      if (!initializePage()) return;
+
       try {
         const cameras = await Html5Qrcode.getCameras();
 
@@ -108,7 +134,7 @@
         );
 
         document.getElementById("status").textContent =
-          "Camera ready. Scan an employee QR code.";
+          "Camera ready. Scan a " + scanMode + " QR code.";
 
       } catch (error) {
         document.getElementById("status").textContent =
@@ -121,46 +147,68 @@
     async function onScanSuccess(decodedText) {
       if (isProcessing) return;
 
-      let employee;
+      let person;
 
       try {
-        employee = JSON.parse(decodedText);
+        person = JSON.parse(decodedText);
       } catch (error) {
         document.getElementById("status").textContent =
-          "Invalid QR code. Please scan an employee QR code.";
+          "Invalid QR code. Please scan a valid " + scanMode + " QR code.";
         return;
       }
 
-      if (
-        !employee ||
-        !employee["ID Number"] ||
-        !employee["Name"]
-      ) {
+      let id;
+      let name;
+      let message;
+
+      if (scanMode === "employee") {
+        id = person["ID Number"];
+        name = person["Name"];
+        message = "EMPLOYEE_QR_SCANNED";
+      } else {
+        id = person["Student ID"];
+        name = person["Student Name"];
+        message = "STUDENT_QR_SCANNED";
+      }
+
+      if (!id || !name) {
         document.getElementById("status").textContent =
-          "Invalid employee QR code.";
+          "Invalid " + scanMode + " QR code.";
         return;
       }
 
       isProcessing = true;
 
       document.getElementById("status").textContent =
-        "Employee QR code detected!";
+        scanMode + " QR code detected!";
 
       try {
         await html5QrCode.stop();
 
         if (window.opener && !window.opener.closed) {
+
+          const scannedPerson = scanMode === "employee"
+            ? {
+                "ID Number": String(id).trim(),
+                "Name": String(name).trim()
+              }
+            : {
+                "Student ID": String(id).trim(),
+                "Student Name": String(name).trim()
+              };
+
+          const data = scanMode === "employee"
+            ? { employee: scannedPerson }
+            : { student: scannedPerson };
+
           window.opener.postMessage({
-            type: "EMPLOYEE_QR_SCANNED",
-            employee: {
-              "ID Number": String(employee["ID Number"]).trim(),
-              "Name": String(employee["Name"]).trim()
-            },
+            type: message,
+            ...data,
             scannedAt: new Date().toISOString()
           }, "*");
 
           document.getElementById("status").textContent =
-            "Employee information sent successfully!";
+            "QR information sent successfully!";
 
           setTimeout(() => window.close(), 1000);
 
